@@ -5,11 +5,13 @@ class Config {
   ALWAYS_SPAWN: boolean;
   MAX_RES: number;
   NOISE_MAGNITUDE:number;
+  NOISE_FREQUENCY:number;
   constructor() {
-    this.SPEED_MULT = 1;
+    this.SPEED_MULT = 0.5;
     this.ALWAYS_SPAWN = false;
     this.MAX_RES = 1024;
-    this.NOISE_MAGNITUDE=0.25;
+    this.NOISE_MAGNITUDE=2;
+    this.NOISE_FREQUENCY=0.25;
   }
 };
 const CONFIG = new Config();
@@ -22,7 +24,10 @@ const regl = reglFactory({
 const gui = new dat.GUI();
 
 gui.add(CONFIG, "SPEED_MULT").name("base speed").max(5).min(0.25).step(0.05)
-gui.add(CONFIG, "NOISE_MAGNITUDE").name("noise mag").max(5).min(0.0).step(0.01)
+gui.add(CONFIG, "NOISE_MAGNITUDE").name("noise mag").max(10).min(0.0).step(0.01)
+
+gui.add(CONFIG, "NOISE_FREQUENCY").name("noise frequency").max(1).min(0.0).step(0.01)
+
 gui.add(CONFIG, "MAX_RES").name("max res").max(4096).min(256).step(256)
 gui.add(CONFIG, "ALWAYS_SPAWN").name("always spawn")
 const mouse = { x: 0, y: 0, buttons: 0 };
@@ -166,6 +171,7 @@ const updateSprites = regl({
     uniform float sshapeX, sshapeY;
     uniform float speedMult;
     uniform float noiseSize;
+    uniform float noiseF;
     float PHI = 1.61803398874989484820459 * 00000.1; // Golden Ratio   
 float PI  = 3.14159265358979323846264 * 00000.1; // PI
 float SRT = 1.41421356237309504880169 * 10000.0; // Square Root of Two
@@ -198,7 +204,10 @@ float random_0t1(in vec2 coordinate, in float seed)
           vec2 dp=vec2(cos(aa),sin(aa));
         if(dot(dp,velocity)>=0.0*length(velocity)){
         float bri=(length(texture2D(substrate, position/res+(dp*(10.0 )+vec2(0.0,0.0))/res).rgb));
-        bri+=random_0t1(position,float(da))*noiseSize;
+        float rd=mod(mod(random_0t1(position,float(da+20)),1.0)+1.0,1.0);
+        float no=mod(mod(random_0t1(position.yx,float(da+30)),1.0)+1.0,1.0);;
+        if(rd<noiseF)
+        bri+=no*noiseSize;
         if(bri>brim){
         dm=dp;//*bri;//(dp-normalize(velocity))*bri;
         brim=bri;
@@ -210,7 +219,7 @@ float random_0t1(in vec2 coordinate, in float seed)
      float ddg=length(dm);
       velocity.xy+=(dm-normalize(velocity)*dot(normalize(velocity),dm))*0.1;//*max(1.0,brim)*0.1;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
       //velocity.xy*=0.95;
-      float an=0.1;//+(position.y*0.5+0.5)*0.5;
+      float an=0.01;//+(position.y*0.5+0.5)*0.5;
      velocity.xy+=an*(length(velocity)>0.0?normalize(velocity)*speedMult:vec2(0.0));
      velocity.xy*=1.0/(1.0+an);
       position += 0.5 * velocity * deltaT;
@@ -233,6 +242,7 @@ float random_0t1(in vec2 coordinate, in float seed)
     sshapeX: () => BB_W, sshapeY: () => BB_H,
     speedMult: () => CONFIG.SPEED_MULT,
     noiseSize: () => CONFIG.NOISE_MAGNITUDE,
+    noiseF: () => CONFIG.NOISE_FREQUENCY,
     deltaT: 1,
     gravity: 0.00
   },
@@ -316,7 +326,7 @@ const drawSpritePH = regl({
       max(abs(length(sss3.zw)-length(sss2.zw)),max(abs(length(sss3.zw)-length(sss.zw)),abs(length(sss.zw)-length(sss2.zw))))
       );
      float ggy=gg;
-      float a=length(sss.zw)*1.0*max(sshapeX,sshapeY);//(ggy-0.5)*10000000.0+0.50+sin(atan(sss.w,sss.z)*2.0)*0.0;//0.5+log(ggy/(1.0-ggy))*0.1;//(length(sss.zw)*max(sshapeX,sshapeY)/20.0)*2.0+sin(atan(sss.w,sss.z)*2.0)*0.0;
+      float a=length(sss.zw)*3.1415926535*2.0;//(ggy-0.5)*10000000.0+0.50+sin(atan(sss.w,sss.z)*2.0)*0.0;//0.5+log(ggy/(1.0-ggy))*0.1;//(length(sss.zw)*max(sshapeX,sshapeY)/20.0)*2.0+sin(atan(sss.w,sss.z)*2.0)*0.0;
       rg = normalize(vec3(sin(a),sin(a+3.1415926535*2.0/3.0),sin(a+3.1415926535*4.0/3.0))/2.0+0.5);
       gl_Position = vec4(position, 0, 1);
     }
