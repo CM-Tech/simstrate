@@ -345,13 +345,20 @@
  */
 import reglFactory from 'regl'
 import mouseChange from 'mouse-change';
+const dd=()=>window.devicePixelRatio??1;
   const regl =reglFactory({
     extensions: 'OES_texture_float',
-    pixelRatio:1,
+    pixelRatio:dd(),
   })
-  const mouse = mouseChange()
+  const mouse = {x:0,y:0,buttons:0};
+  window.addEventListener('mousemove',(e)=>{mouse.x=e.clientX;mouse.y=e.clientY;mouse.buttons=e.buttons;})
+  window.addEventListener('mousedown',(e)=>{mouse.x=e.clientX;mouse.y=e.clientY;mouse.buttons=e.buttons;})
+  window.addEventListener('mouseup',(e)=>{mouse.x=e.clientX;mouse.y=e.clientY;mouse.buttons=e.buttons;})
+  window.addEventListener('touchmove',(e)=>{mouse.x=e.changedTouches[0].clientX;mouse.y=e.changedTouches[0].clientY;mouse.buttons=e.touches.length;})
+  window.addEventListener('touchstart',(e)=>{mouse.x=e.changedTouches[0].clientX;mouse.y=e.changedTouches[0].clientY;mouse.buttons=e.touches.length;})
+  window.addEventListener('touchend',(e)=>{mouse.x=e.changedTouches[0].clientX;mouse.y=e.changedTouches[0].clientY;mouse.buttons=e.touches.length;})
   
-  const N = 1024
+  const N = 256
   const BLOCK_SIZE = 64
   const BB_SIZE=64;
   let BB_H=BB_SIZE;
@@ -496,23 +503,25 @@ import mouseChange from 'mouse-change';
         gl_FragCoord.xy / shape);
       vec2 position = prevState.xy;
       vec2 velocity = prevState.zw;
-      position += 0.5 * velocity * deltaT;
+      position += 0.5 * velocity * deltaT/vec2(sshapeX,sshapeY)*max(sshapeX,sshapeY);
       if (position.x < -1.0 || position.x > 1.0) {
-        velocity.x *= -1.0;
+        velocity.x =-abs(velocity.x)*sign(position.x);
+       //position.x =mod(mod(position.x*0.5+0.5,1.0)+1.0,1.0)*2.0-1.0;
       }
       if (position.y < -1.0 || position.y > 1.0) {
-        velocity.y *= -1.0;
+       velocity.y =-abs(velocity.y)*sign(position.y);
+       // position.y =mod(mod(position.y*0.5+0.5,1.0)+1.0,1.0)*2.0-1.0;
       }
       vec2 dm=vec2(0.0);
       float brim=-1.0;
-      for(int da=-3; da<=3; ++da){
-          float aa=float(da)/7.0*3.1415926535*2.0+atan(velocity.y,velocity.x);
+      for(int da=-2; da<=2; ++da){
+          float aa=float(da)/8.0*3.1415926535*2.0+atan(velocity.y,velocity.x);
           vec2 dp=vec2(cos(aa),sin(aa));
         if(dot(dp,velocity)>=0.0*length(velocity)){
-        float bri=length(texture2D(substrate, position/2.0+0.5+(dp*10.0+vec2(0.0,0.0))/vec2(sshapeX,sshapeY)).rgb)+
-        0.0*(sin(mod(position.x,sin(position.y*1000.0)*0.01)*100000.0)/2.0+0.5);//*dot(dp,velocity);
+        float bri=(length(texture2D(substrate, position/2.0+0.5+(dp*(10.0+100.0*(0.5+position.y*0.5))+vec2(0.0,0.0))/vec2(sshapeX,sshapeY)).rgb)+1.0)*
+        ((1.0*(0.25+(0.5+position.y*0.0)*0.75))*(sin(mod(position.x,sin(float(da)+position.y*100000.0)*0.01)*1000000.0)/2.0+0.5)>0.8?1000.0:1.0);//*dot(dp,velocity);
         if(bri>brim){
-        dm=dp*bri/max(sshapeX,sshapeY);
+        dm=(dp-normalize(velocity))*bri/max(sshapeX,sshapeY);
         brim=bri;
         }
         }
@@ -520,13 +529,13 @@ import mouseChange from 'mouse-change';
       
      //velocity.xy=length(velocity)>0.0?normalize(velocity):vec2(0.0);
      float ddg=length(dm);
-      velocity.xy+=dm*max(1.0,brim)*0.05;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
+      velocity.xy+=dm*max(1.0,brim)*0.1;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
       //velocity.xy*=0.95;
-      float an=0.1;
+      float an=0.01;//+(position.y*0.5+0.5)*0.5;
      velocity.xy+=an*(length(velocity)>0.0?normalize(velocity)/max(sshapeX,sshapeY):vec2(0.0));
      velocity.xy*=1.0/(1.0+an);
-      position += 0.5 * velocity * deltaT;
-     // velocity.y = velocity.y + gravity * deltaT;
+      position += 0.5 * velocity * deltaT/vec2(sshapeX,sshapeY)*max(sshapeX,sshapeY);
+     velocity.y = velocity.y + gravity * deltaT;
       gl_FragColor = vec4(position, velocity);
     }
     `,
@@ -546,8 +555,8 @@ import mouseChange from 'mouse-change';
       shapeX: regl.context('viewportWidth'),
       shapeY: regl.context('viewportHeight'),
       sshapeX:()=>BB_W, sshapeY:()=>BB_H,
-      deltaT: 1,
-      gravity: -0.5
+      deltaT: 0.5*4,
+      gravity: 0.00
     },
   
     attributes: {
@@ -615,13 +624,22 @@ import mouseChange from 'mouse-change';
     precision highp float;
     attribute vec2 sprite;
     uniform sampler2D state;
+    uniform float N;
     varying vec3 rg;
+    uniform float sshapeX, sshapeY;
     void main () {
         vec4 sss=texture2D(state, sprite);
+        vec4 sss2=texture2D(state, sprite+vec2(0.0,1.0/N).yx);
+
+        vec4 sss3=texture2D(state, sprite-vec2(0.0,1.0/N).yx);
       vec2 position =sss.xy;
       gl_PointSize = 1.0;
-      float a=atan(sss.w,sss.z)*2.0;
-      rg = vec3(sin(a),sin(a+3.1415926535*2.0/3.0),sin(a+3.1415926535*4.0/3.0))/2.0+0.5;
+      float gg=((length(sss.zw)-min(length(sss2.zw),min(length(sss.zw),length(sss3.zw))))/
+      max(abs(length(sss3.zw)-length(sss2.zw)),max(abs(length(sss3.zw)-length(sss.zw)),abs(length(sss.zw)-length(sss2.zw))))
+      );
+     float ggy=gg;
+      float a=length(sss.zw)*10.0*max(sshapeX,sshapeY);//(ggy-0.5)*10000000.0+0.50+sin(atan(sss.w,sss.z)*2.0)*0.0;//0.5+log(ggy/(1.0-ggy))*0.1;//(length(sss.zw)*max(sshapeX,sshapeY)/20.0)*2.0+sin(atan(sss.w,sss.z)*2.0)*0.0;
+      rg = normalize(vec3(sin(a),sin(a+3.1415926535*2.0/3.0),sin(a+3.1415926535*4.0/3.0))/2.0+0.5);
       gl_Position = vec4(position, 0, 1);
     }
     `,
@@ -630,7 +648,7 @@ import mouseChange from 'mouse-change';
     precision highp float;
     varying vec3 rg;
     void main () {
-      gl_FragColor = vec4(rg, 0.5);
+      gl_FragColor = vec4(rg, 1.0);
     }
     `,
   
@@ -644,15 +662,17 @@ import mouseChange from 'mouse-change';
   
     uniforms: {
       state: ({tick},{t}) => SPRITES[t % 2],
+      N: ({tick},{t}) => N,
 
-      substrate: ({tick},{inI}) => substrate[inI]
+      substrate: ({tick},{inI}) => substrate[inI],
+      sshapeX:()=>BB_W, sshapeY:()=>BB_H,
     },
   
     primitive: 'points',
     blend:{enable:true,func: {
         srcRGB: 'src alpha',
         srcAlpha: 'src alpha',
-        dstRGB: 'one',
+        dstRGB: 'one minus src alpha',
         dstAlpha: 'one minus src alpha',
       }},
     offset: (context, {count}) => N * N - count,
@@ -689,9 +709,10 @@ import mouseChange from 'mouse-change';
   regl.frame(({tick, drawingBufferWidth, drawingBufferHeight, pixelRatio}) => {
     const mouseX = toScreen(mouse.x, drawingBufferWidth, pixelRatio)
     const mouseY = -toScreen(mouse.y, drawingBufferHeight, pixelRatio)
-  if(window.innerHeight!==BB_H||window.innerWidth!==BB_W){
-    let n_BB_W=window.innerWidth;
-      let n_BB_H=window.innerHeight;
+  
+    let n_BB_W=window.innerWidth/pixelRatio;
+      let n_BB_H=window.innerHeight/pixelRatio;
+      if(n_BB_W!==BB_W||n_BB_H!==BB_H){
     substrateTX.forEach((t,i)=>substrate[i]({color:t({width:n_BB_W,height:n_BB_H})}));
       BB_W=n_BB_W;
       BB_H=n_BB_H;
@@ -708,7 +729,7 @@ import mouseChange from 'mouse-change';
       count += BLOCK_SIZE
       COUNT_DIV.innerText = Math.min(count, N * N)
     }
-  for(let j=0;j<20;j++){
+  for(let j=0;j<10;j++){
     updateSprites({t:tt})
   
   
