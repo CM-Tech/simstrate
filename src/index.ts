@@ -717,7 +717,7 @@ const dd=()=>window.devicePixelRatio??1;
       BB_W=n_BB_W;
       BB_H=n_BB_H;
   }
-    if (mouse.buttons) {
+    if (mouse.buttons||true) {
       for (let i = 0; i < BLOCK_SIZE; ++i) {
         BLOCK.data[4 * i] = mouseX
         BLOCK.data[4 * i + 1] = mouseY
