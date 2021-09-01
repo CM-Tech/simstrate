@@ -4,10 +4,12 @@ class Config {
   SPEED_MULT: number;
   ALWAYS_SPAWN: boolean;
   MAX_RES: number;
+  NOISE_MAGNITUDE:number;
   constructor() {
     this.SPEED_MULT = 1;
-    this.ALWAYS_SPAWN = true;
+    this.ALWAYS_SPAWN = false;
     this.MAX_RES = 1024;
+    this.NOISE_MAGNITUDE=0.25;
   }
 };
 const CONFIG = new Config();
@@ -20,6 +22,7 @@ const regl = reglFactory({
 const gui = new dat.GUI();
 
 gui.add(CONFIG, "SPEED_MULT").name("base speed").max(5).min(0.25).step(0.05)
+gui.add(CONFIG, "NOISE_MAGNITUDE").name("noise mag").max(5).min(0.0).step(0.01)
 gui.add(CONFIG, "MAX_RES").name("max res").max(4096).min(256).step(256)
 gui.add(CONFIG, "ALWAYS_SPAWN").name("always spawn")
 const mouse = { x: 0, y: 0, buttons: 0 };
@@ -162,6 +165,16 @@ const updateSprites = regl({
 
     uniform float sshapeX, sshapeY;
     uniform float speedMult;
+    uniform float noiseSize;
+    float PHI = 1.61803398874989484820459 * 00000.1; // Golden Ratio   
+float PI  = 3.14159265358979323846264 * 00000.1; // PI
+float SRT = 1.41421356237309504880169 * 10000.0; // Square Root of Two
+
+
+float random_0t1(in vec2 coordinate, in float seed)
+{
+    return fract(sin(dot(coordinate*seed, vec2(PHI, PI)))*SRT);
+}
     void main () {
       vec2 res=vec2(sshapeX,sshapeY);
       vec2 shape = vec2(shapeX, shapeY);
@@ -185,6 +198,7 @@ const updateSprites = regl({
           vec2 dp=vec2(cos(aa),sin(aa));
         if(dot(dp,velocity)>=0.0*length(velocity)){
         float bri=(length(texture2D(substrate, position/res+(dp*(10.0 )+vec2(0.0,0.0))/res).rgb));
+        bri+=random_0t1(position,float(da))*noiseSize;
         if(bri>brim){
         dm=dp;//*bri;//(dp-normalize(velocity))*bri;
         brim=bri;
@@ -196,7 +210,7 @@ const updateSprites = regl({
      float ddg=length(dm);
       velocity.xy+=(dm-normalize(velocity)*dot(normalize(velocity),dm))*0.1;//*max(1.0,brim)*0.1;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
       //velocity.xy*=0.95;
-      float an=1.0;//+(position.y*0.5+0.5)*0.5;
+      float an=0.1;//+(position.y*0.5+0.5)*0.5;
      velocity.xy+=an*(length(velocity)>0.0?normalize(velocity)*speedMult:vec2(0.0));
      velocity.xy*=1.0/(1.0+an);
       position += 0.5 * velocity * deltaT;
@@ -218,6 +232,7 @@ const updateSprites = regl({
     shapeY: regl.context('viewportHeight'),
     sshapeX: () => BB_W, sshapeY: () => BB_H,
     speedMult: () => CONFIG.SPEED_MULT,
+    noiseSize: () => CONFIG.NOISE_MAGNITUDE,
     deltaT: 1,
     gravity: 0.00
   },
@@ -378,7 +393,7 @@ regl.frame(({ tick, drawingBufferWidth, drawingBufferHeight, pixelRatio }) => {
     BB_W = n_BB_W;
     BB_H = n_BB_H;
   }
-  if (mouse.buttons || CONFIG.ALWAYS_SPAWN) {
+  if (mouse.buttons || CONFIG.ALWAYS_SPAWN || tt<100) {
     for (let i = 0; i < BLOCK_SIZE; ++i) {
       BLOCK.data[4 * i] = mouseX
       BLOCK.data[4 * i + 1] = mouseY
