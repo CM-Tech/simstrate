@@ -396,6 +396,8 @@ let oldBuffer=[];
 let oldGS=[];
 let mB=[];
 let tt = 0;
+(async ()=>{
+
 const audioContext = new AudioContext()
 await audioContext.audioWorklet.addModule('noise-processor.js')
 const whiteNoiseNode = new AudioWorkletNode(audioContext, 'white-noise-processor')
@@ -539,3 +541,4 @@ window.setInterval(()=>{
 //     }
 //   }
 // })
+})();
