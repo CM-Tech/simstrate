@@ -1,5 +1,5 @@
 import * as dat from 'dat.gui';
-import workletURL from './noiseProcessor?url'
+import workletURL from './noiseProcessor.ts?url'
 
 class Config {
   SPEED_MULT: number;
