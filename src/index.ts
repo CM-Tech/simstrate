@@ -1,4 +1,5 @@
 import * as dat from 'dat.gui';
+import workletURL from './noiseProcessor?url'
 
 class Config {
   SPEED_MULT: number;
@@ -6,12 +7,14 @@ class Config {
   MAX_RES: number;
   NOISE_MAGNITUDE:number;
   NOISE_FREQUENCY:number;
+  BLUR_FACTOR:number;
   constructor() {
-    this.SPEED_MULT = 0.5;
+    this.SPEED_MULT = 1;
     this.ALWAYS_SPAWN = false;
     this.MAX_RES = 1024;
     this.NOISE_MAGNITUDE=2;
     this.NOISE_FREQUENCY=0.25;
+    this.BLUR_FACTOR=1;
   }
 };
 const CONFIG = new Config();
@@ -30,13 +33,16 @@ gui.add(CONFIG, "NOISE_FREQUENCY").name("noise frequency").max(1).min(0.0).step(
 
 gui.add(CONFIG, "MAX_RES").name("max res").max(4096).min(256).step(256)
 gui.add(CONFIG, "ALWAYS_SPAWN").name("always spawn")
+gui.add(CONFIG, "BLUR_FACTOR").name("blur factor").max(1).min(0.0).step(0.01)
 const mouse = { x: 0, y: 0, buttons: 0 };
-window.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.buttons = e.buttons; })
-window.addEventListener('mousedown', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.buttons = e.buttons; })
-window.addEventListener('mouseup', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.buttons = e.buttons; })
-window.addEventListener('touchmove', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
-window.addEventListener('touchstart', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
-window.addEventListener('touchend', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
+
+const canvas=regl._gl.canvas;
+canvas.addEventListener('mousemove', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.buttons = e.buttons; })
+canvas.addEventListener('mousedown', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.buttons = e.buttons; })
+canvas.addEventListener('mouseup', (e) => { mouse.x = e.clientX; mouse.y = e.clientY; mouse.buttons = e.buttons; })
+canvas.addEventListener('touchmove', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
+canvas.addEventListener('touchstart', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
+canvas.addEventListener('touchend', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
 
 const N = 64
 const BLOCK_SIZE = 64
@@ -63,6 +69,7 @@ const updateLife = regl({
     uniform sampler2D prevState;
 
     uniform float sshapeX, sshapeY;
+    uniform float blurFac;
     varying vec2 uv;
     void main() {
       vec3 n = vec3(0.0);
@@ -71,13 +78,16 @@ const updateLife = regl({
         n += texture2D(prevState, uv+vec2(dx,dy)/vec2(sshapeX,sshapeY)).rgb;
       }
       vec3 s = texture2D(prevState, uv).rgb;
-      float l=0.1;
-      vec3 ns=s*(1.0-l)+l*(n/9.0);
+      float l=blurFac;
+      vec3 ns=s*(1.0-l)+l*((n-s)/8.0);
       vec3 col=vec3(max(ns-1.0/255.0,0.0));
       gl_FragColor = vec4(col,1);
     }`,
 
   framebuffer: ({ tick }, { outI }) => substrate[outI],
+  uniforms: {
+    blurFac: () => CONFIG.BLUR_FACTOR,
+  }
 
 })
 
@@ -181,6 +191,10 @@ float random_0t1(in vec2 coordinate, in float seed)
 {
     return fract(sin(dot(coordinate*seed, vec2(PHI, PI)))*SRT);
 }
+float briC(in vec3 color)
+{
+    return color.x+color.y+color.z;
+}
     void main () {
       vec2 res=vec2(sshapeX,sshapeY);
       vec2 shape = vec2(shapeX, shapeY);
@@ -199,15 +213,16 @@ float random_0t1(in vec2 coordinate, in float seed)
       }
       vec2 dm=vec2(0.0);
       float brim=-1.0;
+      float cc=(briC(texture2D(substrate, position/res).rgb));
       for(int da=-1; da<=1; ++da){
           float aa=float(da)/6.0*3.1415926535*2.0+atan(velocity.y,velocity.x);
           vec2 dp=vec2(cos(aa),sin(aa));
         if(dot(dp,velocity)>=0.0*length(velocity)){
-        float bri=(length(texture2D(substrate, position/res+(dp*(10.0 )+vec2(0.0,0.0))/res).rgb));
+        float bri=(briC(texture2D(substrate, position/res+(dp*(10.0 )+vec2(0.0,0.0))/res).rgb))+1.0;
         float rd=mod(mod(random_0t1(position,float(da+20)),1.0)+1.0,1.0);
         float no=mod(mod(random_0t1(position.yx,float(da+30)),1.0)+1.0,1.0);;
         if(rd<noiseF)
-        bri+=no*noiseSize;
+        bri*=1.0+no*noiseSize;
         if(bri>brim){
         dm=dp;//*bri;//(dp-normalize(velocity))*bri;
         brim=bri;
@@ -217,8 +232,10 @@ float random_0t1(in vec2 coordinate, in float seed)
       
      //velocity.xy=length(velocity)>0.0?normalize(velocity):vec2(0.0);
      float ddg=length(dm);
-      velocity.xy+=(dm-normalize(velocity)*dot(normalize(velocity),dm))*0.1;//*max(1.0,brim)*0.1;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
-      //velocity.xy*=0.95;
+      //velocity.xy+=(dm-normalize(velocity)*dot(normalize(velocity),dm))*(brim)/(cc+brim)*speedMult;//*max(1.0,brim)*0.1;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
+      float anO=0.05;//+(position.y*0.5+0.5)*0.5;
+      velocity.xy+=anO*normalize(dm)*((brim)/(cc+brim)*2.0+1.0)/2.0*speedMult;//*max(1.0,brim)*0.1;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
+      velocity.xy*=1.0/(1.0+anO);
       float an=0.005;//+(position.y*0.5+0.5)*0.5;
      velocity.xy+=an*(length(velocity)>0.0?normalize(velocity)*speedMult:vec2(0.0));
      velocity.xy*=1.0/(1.0+an);
@@ -315,6 +332,10 @@ const drawSpritePH = regl({
     uniform float N;
     varying vec3 rg;
     uniform float sshapeX, sshapeY;
+    float briC(in vec3 color)
+{
+    return color.x+color.y+color.z;
+}
     void main () {
         vec4 sss=texture2D(state, sprite);
         vec4 sss2=texture2D(state, sprite+vec2(0.0,1.0/N).yx);
@@ -328,6 +349,7 @@ const drawSpritePH = regl({
      float ggy=gg;
       float a=length(sss.zw)*3.1415926535*2.0;//(ggy-0.5)*10000000.0+0.50+sin(atan(sss.w,sss.z)*2.0)*0.0;//0.5+log(ggy/(1.0-ggy))*0.1;//(length(sss.zw)*max(sshapeX,sshapeY)/20.0)*2.0+sin(atan(sss.w,sss.z)*2.0)*0.0;
       rg = normalize(vec3(sin(a),sin(a+3.1415926535*2.0/3.0),sin(a+3.1415926535*4.0/3.0))/2.0+0.5);
+      rg=rg/briC(rg);
       gl_Position = vec4(position, 0, 1);
     }
     `,
@@ -399,7 +421,7 @@ let tt = 0;
 (async ()=>{
 
 const audioContext = new AudioContext()
-await audioContext.audioWorklet.addModule('noise-processor.js')
+await audioContext.audioWorklet.addModule(workletURL)
 const whiteNoiseNode = new AudioWorkletNode(audioContext, 'white-noise-processor')
 whiteNoiseNode.connect(audioContext.destination)
 whiteNoiseNode.port.start()
@@ -460,7 +482,7 @@ regl.frame(({ tick, drawingBufferWidth, drawingBufferHeight, pixelRatio }) => {
     // regl.renderbuffer
     
   
-  if(tt%10==0)
+  if(tt%2==0)
     regl({framebuffer:SPRITES[0]})(() => {
       var pixels = regl.read()
       const vals=[...pixels.values()];
@@ -474,11 +496,16 @@ let dt=Math.max(q-stime,1);
   stime=q;
     let gs=pixelBuffer.map((x,i)=>{
         const old=oldBuffer[i]??x;
+
+      const oldGSI=oldGS?.[i]??[0,old,{lastTurnTime:tt,plastTurnTime:tt,lastTurn:[1,0],turnCycle:0,turnDur:[]}]
+      const oldData=oldGSI[2];
         const dot=x;
-        if(old.includes(NaN))
-        console.log(dot,old)
+        // if(old.includes(NaN))
+        // console.log(dot,old)
         const len=Math.pow(dot[3]**2+dot[2]**2,0.5);
         const lenO=Math.pow(old[3]**2+old[2]**2,0.5);
+        const at=Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));
+
         const a=Math.pow(((old[0]-dot[0])* BB_W)**2+((old[1]-dot[1])* BB_H)**2,0.5);//Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));
         // let dis=Math.pow(2,(len*1)/12);
         const freq=a/20;///Math.PI/2/(dt/1000);
@@ -488,8 +515,50 @@ let dt=Math.max(q-stime,1);
         if(!Number.isFinite(ogg)){
 ogg=0;          
         }
-        let nw=a/(dt/1000)*Math.sign((dot[2]*old[3]-dot[3]*old[2]));//a/2/Math.sqrt(1-Math.pow((dot[3]*old[3]+dot[2]*old[2])/len/lenO,2))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));//Math.sin(Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO)));//freq/len-1;//Math.log(freq+0.0000001);
-        return [Math.max(Math.min(nw*0.5+ogg*0.5,1000),-1000)??0,dot]
+        let cRad=a/Math.sqrt(1-Math.pow((dot[3]*old[3]+dot[2]*old[2])/len/lenO,2));//*Math.sign((dot[2]*old[3]-dot[3]*old[2]));
+        let nw=a/(1000/10/1000)*Math.sign((dot[2]*old[3]-dot[3]*old[2]));//a/2/Math.sqrt(1-Math.pow((dot[3]*old[3]+dot[2]*old[2])/len/lenO,2))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));//Math.sin(Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO)));//freq/len-1;//Math.log(freq+0.0000001);
+        const dotPTT=oldData.lastTurn[0]*dot[2]+oldData.lastTurn[1]*dot[3];
+        let nLTT=oldData.lastTurnTime;
+        let nPLTT=oldData.plastTurnTime;
+        let nLT=oldData.lastTurn;
+        let nTurnCycle=oldData.turnCycle*0.5+at*0.5;
+        let ccy=0.25;
+        // if(Math.abs(nTurnCycle)>Math.PI*2){
+        //   nTurnCycle=nTurnCycle%(Math.PI*2*ccy);
+        // }
+//         if(Math.abs(nTurnCycle)>Math.PI*2*ccy){// if(dotPTT<0){
+//           nTurnCycle=nTurnCycle%(Math.PI*2*ccy);
+
+//           const dotPTT2=oldData.lastTurn[1]*dot[2]-oldData.lastTurn[0]*dot[3];
+//           if(dotPTT2>=0){
+// nLT=[oldData.lastTurn[1],-oldData.lastTurn[0]];
+
+//           }else{
+
+// nLT=[-oldData.lastTurn[1],oldData.lastTurn[0]];
+//           }
+//           nPLTT=nLTT+0;
+//           nLTT=tt+0;
+//         }
+        const di=Math.abs(nTurnCycle);//(nLTT-nPLTT)/ccy*0.5+0.5*oldData.turnDur;//cRad;//(((tt-nLTT)>0)?(tt-nLTT)/Math.abs(nTurnCycle)*Math.PI*2:(nLTT-nPLTT)/ccy)/200;//(tt-nLTT)*Math.PI*2>(nLTT-nPLTT)*Math.abs(nTurnCycle)?(tt-nLTT)/Math.abs(nTurnCycle)*Math.PI*2:(nLTT-nPLTT);
+        const ff=1;//Math.max(Math.max(di,oldData.turnDur)*0.125,0.25);
+        const di2=di;//oldData.turnDur+(Number.isFinite(di-oldData.turnDur)?Math.max(-ff,Math.min(di-oldData.turnDur,ff)):0);
+        nw=di2*4000+110;//a*4;//1/di2*440;
+        if(!Number.isFinite(nw)){
+          nw=ogg;
+        }
+        
+        let ttt=oldData.turnDur;
+        ttt.push(Math.abs(1/cRad));
+        ttt=ttt.slice(-5);
+        // ttt.sort();
+        const v=Math.pow(2,Math.log2(1/(ttt.reduce((ac,b)=>ac+b,0)/ttt.length))/2)
+        // if(i===0){
+        // window.k=nw;
+        // window.jg=(ttt[ttt.length>>1])
+        // window.v=v;
+        // }
+        return [Math.max(Math.min(v*110/4,440*8),-440*8)??0,dot,{lastTurnTime:nLTT,plastTurnTime:nPLTT,lastTurn:nLT,turnCycle:nTurnCycle,turnDur:ttt}]
         // [Math.pow(2,Math.floor(Math.log(Math.pow(a/Math.PI/2/(this.d/1000),1))/Math.log(2)*6+32)/12),0.5];//>0?dis:0;
     })
     oldGS=gs;
@@ -497,11 +566,11 @@ ogg=0;
     let mx=2;//gs.map(x=>x[0]).reduce((a,b)=>Math.max(a,b),0);
     let men=0.;//gs.map(x=>x[0]).reduce((a,b)=>b+a,0)/gs.length;
     gs.sort((a,b)=>a[0]-b[0]);
-    const l=Math.min(gs.length,64);
+    const l=Math.min(gs.length,6);
     // console.log(l)
     mB=new Array(l).fill(0).map((x,i)=>{  
         const o=gs[Math.floor((i+0.5)*((gs.length-1)/(l)))]
-        return [o,Math.atan((Math.abs(o[0]))/440/2)*440*2+110]
+        return [o,o[0]]//Math.atan((Math.abs(o[0]))/440/2)*440*2+110]
     });
     }
       
@@ -512,7 +581,7 @@ ogg=0;
 window.setInterval(()=>{
   
   
-  whiteNoiseNode.port.postMessage({p:mB,d:1})
+  whiteNoiseNode.port.postMessage({p:mB,d:1,t:tt})
   window.mm=mB.map(x=>x[1])
   // stime=q;
 },1000/44100*128*2)

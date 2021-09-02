@@ -1,9 +1,25 @@
+interface AudioWorkletProcessor {
+    readonly port: MessagePort;
+    process(inputs: Float32Array[][], outputs: Float32Array[][], parameters: Map<string, Float32Array>): boolean;
+}
+
+declare class AudioWorkletProcessor implements AudioWorkletProcessor {
+    constructor(options?: AudioWorkletNodeOptions);
+}
+declare function registerProcessor(
+    name: string,
+    processorCtor: (new (
+      options?: AudioWorkletNodeOptions
+    ) => AudioWorkletProcessor) & {
+    //   parameterDescriptors?: AudioParamDescriptor[];
+    }
+  ): undefined;
 class WhiteNoiseProcessor extends AudioWorkletProcessor {
     t=0;
     f=[[0,0]];
     f0=[[0,0]];
-    g=[[1,1]];
-    gO=[[1,1]];
+    g:[number,number,number][]=[[1,1,1]];
+    gO:[number,number,number][]=[[1,1,1]];
     d=0;
     constructor(){
         super()
@@ -34,26 +50,29 @@ class WhiteNoiseProcessor extends AudioWorkletProcessor {
             
             this.g=m.data.p.map((x,i)=>{
                 const o=x[0]
-                return [Math.pow(2,(Math.log2(x[1])*12)/12),1]
+                return [Math.pow(2,(Math.log2(x[1])*12)/12),1,o[2].turnDur]
             });
             
             }
         }
     }
-    process (inputs, outputs, parameters) {
+    process (inputs: Float32Array[][], outputs: Float32Array[][], parameters: Map<string, Float32Array>):boolean {
       const output = outputs[0]
       output.forEach(channel => {
           const sn=(x)=>Math.sin(x)//Math.pow(Math.abs(x%1-0.5),1)//Math.sin(x)
+          const tone=(params:[number,number,number],t:number)=>{
+              // const td=Math.min(Math.pow(2,Math.round(Math.log2(params[2])*1)/1)/10,8);
+            return sn(Math.PI*2*params[0]*t);//*(td<10000?1:0)*(0.75+(Math.sin(t*Math.PI*2/td))/4)
+          }
+          const dd=Math.pow(this.g.length,1);
         for (let i = 0; i < channel.length; i++) {
-            this.t+=1;
+            this.t+=1/44100;
             let tot=0;
             for (let j = 0; j < this.g.length; j++) {
                 if(j < this.g.length){
-                let dis=this.g[j][0]
-                let disO=this.gO[j]?.[0]??this.g[j][0];
-                let rO=this.gO[j]?.[1]??this.g[j][1];
                 const l=i/channel.length;
-                tot+= Math.pow(sn(Math.PI*2*(dis)*this.t/44100),1)/Math.pow(this.g.length,0.75)*(this.g[j][1])*l+(1-l)*Math.pow(sn(Math.PI*2*(disO)*this.t/44100),1)/Math.pow(this.g.length,0.75)*(rO);
+                tot+=(l*tone(this.g[j],this.t)+(1-l)*tone(this.gO[j]??this.g[j],this.t))/dd;
+               
                 }
             }
             channel[i] =tot;

@@ -7,6 +7,11 @@
   resolved "https://registry.yarnpkg.com/@types/dat.gui/-/dat.gui-0.7.7.tgz#2125aedfaa190364c5a50b0447858a7e159aea2e"
   integrity sha512-CxLCme0He5Jk3uQwfO/fGZMyNhb/ypANzqX0yU9lviBQMlen5SOvQTBQ/Cd9x5mFlUAK5Tk8RgvTyLj1nYkz+w==
 
+"@types/web@^0.0.27":
+  version "0.0.27"
+  resolved "https://registry.yarnpkg.com/@types/web/-/web-0.0.27.tgz#ffca283236cd1b127b48e73204c1e6f00839c0ae"
+  integrity sha512-Ce09teEcuvL9cVbflF4wl8xjmZaRNKp3xk/0hLakdknRDyaQxQ+mBC2QCF658WCYPUS5s3J+v9wrpF/lgkJeKw==
+
 anymatch@~3.1.2:
   version "3.1.2"
   resolved "https://registry.yarnpkg.com/anymatch/-/anymatch-3.1.2.tgz#c0557c096af32f106198f4f4e2a383537e378716"
