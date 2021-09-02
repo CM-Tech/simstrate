@@ -477,17 +477,17 @@ let dt=Math.max(q-stime,1);
         console.log(dot,old)
         const len=Math.pow(dot[3]**2+dot[2]**2,0.5);
         const lenO=Math.pow(old[3]**2+old[2]**2,0.5);
-        const a=Math.pow((old[0]-dot[0])**2+(old[1]-dot[1])**2,0.5);//Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));
+        const a=Math.pow(((old[0]-dot[0])* BB_W)**2+((old[1]-dot[1])* BB_H)**2,0.5);//Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));
         // let dis=Math.pow(2,(len*1)/12);
-        const freq=a/Math.PI/2/(dt/1000);
+        const freq=a/20;///Math.PI/2/(dt/1000);
         // const l=Math.max(0,Math.min(1,freq))
         // let ff=l*(4186-130)+130;
         let ogg=(oldGS?.[i]?.[0])??0;
         if(!Number.isFinite(ogg)){
 ogg=0;          
         }
-        let nw=freq;//Math.log(freq+0.0000001);
-        return [(nw*0.9+ogg*0.1)??0,1]
+        let nw=a/(dt/1000)*Math.sign((dot[2]*old[3]-dot[3]*old[2]));//a/2/Math.sqrt(1-Math.pow((dot[3]*old[3]+dot[2]*old[2])/len/lenO,2))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));//Math.sin(Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO)));//freq/len-1;//Math.log(freq+0.0000001);
+        return [Math.max(Math.min(nw*0.5+ogg*0.5,1000),-1000)??0,dot]
         // [Math.pow(2,Math.floor(Math.log(Math.pow(a/Math.PI/2/(this.d/1000),1))/Math.log(2)*6+32)/12),0.5];//>0?dis:0;
     })
     oldGS=gs;
@@ -499,7 +499,7 @@ ogg=0;
     // console.log(l)
     mB=new Array(l).fill(0).map((x,i)=>{  
         const o=gs[Math.floor((i+0.5)*((gs.length-1)/(l)))]
-        return [o,(Math.pow(2,Math.abs(o[0])*10)*440/2)]
+        return [o,Math.atan((Math.abs(o[0]))/440/2)*440*2+110]
     });
     }
       

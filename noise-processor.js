@@ -3,6 +3,7 @@ class WhiteNoiseProcessor extends AudioWorkletProcessor {
     f=[[0,0]];
     f0=[[0,0]];
     g=[[1,1]];
+    gO=[[1,1]];
     d=0;
     constructor(){
         super()
@@ -30,28 +31,35 @@ class WhiteNoiseProcessor extends AudioWorkletProcessor {
             // let men=gs.map(x=>x[0]).reduce((a,b)=>b+a,0)/gs.length;
             // gs.sort((a,b)=>a[0]-b[0]);
             // const l=Math.min(gs.length,32);
+            
             this.g=m.data.p.map((x,i)=>{
                 const o=x[0]
-                return [x[1],1]
+                return [Math.pow(2,(Math.log2(x[1])*12)/12),1]
             });
+            
             }
         }
     }
     process (inputs, outputs, parameters) {
       const output = outputs[0]
       output.forEach(channel => {
+          const sn=(x)=>Math.sin(x)//Math.pow(Math.abs(x%1-0.5),1)//Math.sin(x)
         for (let i = 0; i < channel.length; i++) {
             this.t+=1;
             let tot=0;
             for (let j = 0; j < this.g.length; j++) {
                 if(j < this.g.length){
                 let dis=this.g[j][0]
-                tot+= Math.sin(Math.PI*2*dis*this.t/44100)/Math.pow(this.g.length,1)*this.g[j][1];
+                let disO=this.gO[j]?.[0]??this.g[j][0];
+                let rO=this.gO[j]?.[1]??this.g[j][1];
+                const l=i/channel.length;
+                tot+= Math.pow(sn(Math.PI*2*(dis)*this.t/44100),1)/Math.pow(this.g.length,0.75)*(this.g[j][1])*l+(1-l)*Math.pow(sn(Math.PI*2*(disO)*this.t/44100),1)/Math.pow(this.g.length,0.75)*(rO);
                 }
             }
             channel[i] =tot;
         }
       })
+      this.gO=this.g.slice()
       return true
     }
   }
