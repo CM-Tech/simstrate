@@ -38,7 +38,7 @@ window.addEventListener('touchmove', (e) => { mouse.x = e.changedTouches[0].clie
 window.addEventListener('touchstart', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
 window.addEventListener('touchend', (e) => { mouse.x = e.changedTouches[0].clientX; mouse.y = e.changedTouches[0].clientY; mouse.buttons = e.touches.length; })
 
-const N = 256
+const N = 64
 const BLOCK_SIZE = 64
 const BB_SIZE = 64;
 let BB_H = BB_SIZE;
@@ -71,9 +71,9 @@ const updateLife = regl({
         n += texture2D(prevState, uv+vec2(dx,dy)/vec2(sshapeX,sshapeY)).rgb;
       }
       vec3 s = texture2D(prevState, uv).rgb;
-      float l=1.0;
+      float l=0.1;
       vec3 ns=s*(1.0-l)+l*(n/9.0);
-      vec3 col=vec3(max(ns*0.995,0.0));
+      vec3 col=vec3(max(ns-1.0/255.0,0.0));
       gl_FragColor = vec4(col,1);
     }`,
 
@@ -219,7 +219,7 @@ float random_0t1(in vec2 coordinate, in float seed)
      float ddg=length(dm);
       velocity.xy+=(dm-normalize(velocity)*dot(normalize(velocity),dm))*0.1;//*max(1.0,brim)*0.1;//normalize(dm)*max(ddg,1.0/max(sshapeX,sshapeY))/10.0;
       //velocity.xy*=0.95;
-      float an=0.01;//+(position.y*0.5+0.5)*0.5;
+      float an=0.005;//+(position.y*0.5+0.5)*0.5;
      velocity.xy+=an*(length(velocity)>0.0?normalize(velocity)*speedMult:vec2(0.0));
      velocity.xy*=1.0/(1.0+an);
       position += 0.5 * velocity * deltaT;
@@ -361,7 +361,7 @@ const drawSpritePH = regl({
     enable: true, func: {
       srcRGB: 'src alpha',
       srcAlpha: 'src alpha',
-      dstRGB: 'one minus src alpha',
+      dstRGB: 'one',
       dstAlpha: 'one minus src alpha',
     }
   },
@@ -391,7 +391,17 @@ document.body.appendChild(COUNT_DIV)
 function toScreen(x, size, pixelRatio) {
   return Math.min(Math.max(2.0 * pixelRatio * x / size - 1.0, -0.999), 0.999)
 }
+let pixelBuffer=[];
+let oldBuffer=[];
+let oldGS=[];
+let mB=[];
 let tt = 0;
+const audioContext = new AudioContext()
+await audioContext.audioWorklet.addModule('noise-processor.js')
+const whiteNoiseNode = new AudioWorkletNode(audioContext, 'white-noise-processor')
+whiteNoiseNode.connect(audioContext.destination)
+whiteNoiseNode.port.start()
+let stime=new Date().getTime();
 regl.frame(({ tick, drawingBufferWidth, drawingBufferHeight, pixelRatio }) => {
   const mouseX = toScreen(mouse.x, drawingBufferWidth, pixelRatio)
   const mouseY = -toScreen(mouse.y, drawingBufferHeight, pixelRatio)
@@ -415,7 +425,7 @@ regl.frame(({ tick, drawingBufferWidth, drawingBufferHeight, pixelRatio }) => {
     count += BLOCK_SIZE
     COUNT_DIV.innerText = `${Math.min(count, N * N)}`
   }
-  for (let j = 0; j < 10; j++) {
+  for (let j = 0; j < 2; j++) {
     updateSprites({ t: tt })
 
 
@@ -444,5 +454,88 @@ regl.frame(({ tick, drawingBufferWidth, drawingBufferHeight, pixelRatio }) => {
 
     });
     tt += 1;
+    // SPRITES[0]
+    // regl.renderbuffer
+    
+  
+  if(tt%10==0)
+    regl({framebuffer:SPRITES[0]})(() => {
+      var pixels = regl.read()
+      const vals=[...pixels.values()];
+      const parts=new Array(vals.length/4).fill(0).map((x,i)=>i).filter(x=>Number.isFinite(vals[x*4])).map(x=>[vals[x*4],vals[x*4+1],vals[x*4+2],vals[x*4+3]]);
+      oldBuffer=pixelBuffer.slice();
+      pixelBuffer=parts;
+      if(pixelBuffer.length>1 && oldBuffer.length>1){
+       
+        let q=new Date().getTime();
+let dt=Math.max(q-stime,1);
+  stime=q;
+    let gs=pixelBuffer.map((x,i)=>{
+        const old=oldBuffer[i]??x;
+        const dot=x;
+        if(old.includes(NaN))
+        console.log(dot,old)
+        const len=Math.pow(dot[3]**2+dot[2]**2,0.5);
+        const lenO=Math.pow(old[3]**2+old[2]**2,0.5);
+        const a=Math.pow((old[0]-dot[0])**2+(old[1]-dot[1])**2,0.5);//Math.abs(Math.acos((dot[3]*old[3]+dot[2]*old[2])/len/lenO))*Math.sign((dot[2]*old[3]-dot[3]*old[2]));
+        // let dis=Math.pow(2,(len*1)/12);
+        const freq=a/Math.PI/2/(dt/1000);
+        // const l=Math.max(0,Math.min(1,freq))
+        // let ff=l*(4186-130)+130;
+        let ogg=(oldGS?.[i]?.[0])??0;
+        if(!Number.isFinite(ogg)){
+ogg=0;          
+        }
+        let nw=freq;//Math.log(freq+0.0000001);
+        return [(nw*0.9+ogg*0.1)??0,1]
+        // [Math.pow(2,Math.floor(Math.log(Math.pow(a/Math.PI/2/(this.d/1000),1))/Math.log(2)*6+32)/12),0.5];//>0?dis:0;
+    })
+    oldGS=gs;
+
+    let mx=2;//gs.map(x=>x[0]).reduce((a,b)=>Math.max(a,b),0);
+    let men=0.;//gs.map(x=>x[0]).reduce((a,b)=>b+a,0)/gs.length;
+    gs.sort((a,b)=>a[0]-b[0]);
+    const l=Math.min(gs.length,64);
+    // console.log(l)
+    mB=new Array(l).fill(0).map((x,i)=>{  
+        const o=gs[Math.floor((i+0.5)*((gs.length-1)/(l)))]
+        return [o,(Math.pow(2,Math.abs(o[0])*10)*440/2)]
+    });
+    }
+      
+      // pixels.buffer
+    })
   }
 })
+window.setInterval(()=>{
+  
+  
+  whiteNoiseNode.port.postMessage({p:mB,d:1})
+  window.mm=mB.map(x=>x[1])
+  // stime=q;
+},1000/44100*128*2)
+// var audioCtx = new AudioContext();
+// const bs=4096;
+// var scriptNode = audioCtx.createScriptProcessor(bs, 1, 1);
+// scriptNode.addEventListener('audioprocess', function(audioProcessingEvent) {
+//   // The input buffer is a song we loaded earlier
+//   var inputBuffer = audioProcessingEvent.inputBuffer;
+
+//   // The output buffer contains the samples that will be modified and played
+//   var outputBuffer = audioProcessingEvent.outputBuffer;
+
+//   // Loop through the output channels (in this case there is only one)
+//   for (var channel = 0; channel < outputBuffer.numberOfChannels; channel++) {
+//     var inputData = inputBuffer.getChannelData(channel);
+//     var outputData = outputBuffer.getChannelData(channel);
+
+//     // Loop through the 4096 samples
+//     for (var sample = 0; sample < inputBuffer.length; sample++) {
+//       // make output equal to the same as the input
+//       outputData[sample] = inputData[sample];
+
+//       // add noise to each output sample
+//       outputData[sample] += ((Math.random() * 2) - 1) * 1;
+//     }
+//   }
+// })
