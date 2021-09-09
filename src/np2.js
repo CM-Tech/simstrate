@@ -1,7 +1,7 @@
 export class WhiteNoiseProcessor extends AudioWorkletProcessor {
     t = 0;
-    f = [[0, 0]];
-    f0 = [[0, 0]];
+    f = [[0, 0,0]];
+    f0 = [[0, 0,0]];
     g = [[1, 1, 1]];
     gO = [[1, 1, 1]];
     d = 0;
@@ -34,7 +34,7 @@ export class WhiteNoiseProcessor extends AudioWorkletProcessor {
   
           this.g = m.data.p.map((x, i) => {
             const o = x[0]
-            return [Math.pow(2, (Math.log2(x[1]) * 12) / 12), 1, o[2].phase]
+            return [Math.pow(2, (Math.log2(x[1]) * 12) / 12), x[2], o[2].phase]
           });
   
         }
@@ -55,7 +55,7 @@ export class WhiteNoiseProcessor extends AudioWorkletProcessor {
           for (let j = 0; j < this.g.length; j++) {
             if (j < this.g.length) {
               const l = i / channel.length;
-              tot += (l * tone(this.g[j], this.t) + (1 - l) * tone(this.gO[j] ?? this.g[j], this.t)) / dd;
+              tot += (l * tone(this.g[j], this.t) + (1 - l) * tone(this.gO[j] ?? this.g[j], this.t));// / dd;
   
             }
           }

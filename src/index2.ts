@@ -1,6 +1,6 @@
 import * as dat from 'dat.gui';
 import workletURL from './np2.js?url'
-
+import pluckSrc from './pluck.ogg?url'
 class Config {
   SPEED_MULT: number;
   ALWAYS_SPAWN: boolean;
@@ -423,7 +423,71 @@ let tt = 0;
   const audioContext = new AudioContext()
   await audioContext.audioWorklet.addModule(workletURL)
   const whiteNoiseNode = new AudioWorkletNode(audioContext, 'white-noise-processor')
-  whiteNoiseNode.connect(audioContext.destination)
+  
+  var audioCtx = audioContext;
+
+var analyser = audioCtx.createAnalyser();
+  analyser.minDecibels = -90;
+  analyser.maxDecibels = -10;
+  analyser.smoothingTimeConstant = 0.85;
+
+  var distortion = audioCtx.createWaveShaper();
+  var gainNode = audioCtx.createGain();
+  var biquadFilter = audioCtx.createBiquadFilter();
+  var convolver = audioCtx.createConvolver();
+
+  // distortion curve for the waveshaper, thanks to Kevin Ennis
+  // http://stackoverflow.com/questions/22312841/waveshaper-node-in-webaudio-how-to-emulate-distortion
+
+  function makeDistortionCurve(amount) {
+    var k = typeof amount === 'number' ? amount : 50,
+      n_samples = 44100,
+      curve = new Float32Array(n_samples),
+      deg = Math.PI / 180,
+      i = 0,
+      x;
+    for ( ; i < n_samples; ++i ) {
+      x = i * 2 / n_samples - 1;
+      curve[i] = ( 3 + k ) * x * 20 * deg / ( Math.PI + k * Math.abs(x) );
+    }
+    return curve;
+  };
+  var soundSource;
+
+  let ajaxRequest = new XMLHttpRequest();
+
+  ajaxRequest.open('GET', pluckSrc, true);
+
+  ajaxRequest.responseType = 'arraybuffer';
+
+
+  ajaxRequest.onload = function() {
+    var audioData = ajaxRequest.response;
+
+    audioCtx.decodeAudioData(audioData, function(buffer) {
+        soundSource = audioCtx.createBufferSource();
+        convolver.buffer = buffer;
+      }, function(e){ console.log("Error with decoding audio data" + e.err);});
+
+    //soundSource.connect(audioCtx.destination);
+    //soundSource.loop = true;
+    //soundSource.start();
+  };
+
+  ajaxRequest.send();
+whiteNoiseNode.connect(analyser)
+analyser.connect(distortion);
+distortion.connect(biquadFilter);
+biquadFilter.connect(convolver);
+convolver.connect(gainNode);
+gainNode.connect(audioCtx.destination);
+const major=[0,2,3,5,7,8,10];
+const okI=major;
+// Manipulate the Biquad filter
+
+biquadFilter.type = "lowshelf";
+// biquadFilter.frequency.setValueAtTime(1000, audioCtx.currentTime);
+// biquadFilter.gain.setValueAtTime(1, audioCtx.currentTime);
   whiteNoiseNode.port.start()
   let stime = new Date().getTime();
   regl.frame(({ tick, drawingBufferWidth, drawingBufferHeight, pixelRatio }) => {
@@ -497,13 +561,14 @@ let tt = 0;
             let gs = pixelBuffer.map((x, i) => {
               const old = oldBuffer[i] ?? x;
 
-              const oldGSI = oldGS?.[i] ?? [0, old, { lastTurnTime: tt, plastTurnTime: tt, lastTurn: [1, 0], turnCycle: 0, turnDur: [],phase:0,turnMarks:[] }]
+              const oldGSI = oldGS?.[i] ?? [[1,[0]], old, { lastTurnTime: tt, plastTurnTime: tt, lastTurn: [1, 0], turnCycle: 0, turnDur: [],phase:0,turnMarks:[] }]
               const oldData = oldGSI[2];
               const dot = x;
               // if(old.includes(NaN))
               // console.log(dot,old)
               const len = Math.pow(dot[3] ** 2 + dot[2] ** 2, 0.5);
               const aC = [old[2]-dot[2],old[3]-dot[3]];
+              const GA=Math.atan2(dot[3],dot[2])
               const AL=Math.hypot(...aC)/4;
               const R=len*len/AL
               const lenO = Math.pow(old[3] ** 2 + old[2] ** 2, 0.5);
@@ -514,7 +579,7 @@ let tt = 0;
               const freq = a / 20;///Math.PI/2/(dt/1000);
               // const l=Math.max(0,Math.min(1,freq))
               // let ff=l*(4186-130)+130;
-              let ogg = (oldGS?.[i]?.[0]) ?? 0;
+              let ogg = oldGSI[0][1][0] ?? 0;
               if (!Number.isFinite(ogg)) {
                 ogg = 0;
               }
@@ -572,20 +637,41 @@ let turnDD=turnMarks.reduce((ac, b) => ac + b, 0) / turnMarks.length
               // window.spp=(nLTT-nPLTT)/ccy;
               // console.log(R,cRad)
               }
-              return [Math.max(Math.min(R*4*0.3+ogg*0.7, 440 * 8), -440 * 8) ?? 0, dot, { lastTurnTime: nLTT, plastTurnTime: nPLTT, lastTurn: nLT, turnCycle: nTurnCycle, turnDur: ttt,phase:0,turnMarks }]
+              const F=(Math.max(Math.min(R*2*1+ogg*0.0, 440 * 4), -440 * 8) ?? 1);
+              const wei=1;
+              return [[wei,[F]], dot, { lastTurnTime: nLTT, plastTurnTime: nPLTT, lastTurn: nLT, turnCycle: nTurnCycle, turnDur: ttt,phase:GA/Math.PI/2*0,turnMarks }]
               // [Math.pow(2,Math.floor(Math.log(Math.pow(a/Math.PI/2/(this.d/1000),1))/Math.log(2)*6+32)/12),0.5];//>0?dis:0;
             })
             oldGS = gs;
 
             let mx = 2;//gs.map(x=>x[0]).reduce((a,b)=>Math.max(a,b),0);
             let men = 0.;//gs.map(x=>x[0]).reduce((a,b)=>b+a,0)/gs.length;
-            gs.sort((a, b) => a[0] - b[0]);
-            const l = Math.min(gs.length, 32);
-            // console.log(l)
-            mB = new Array(l).fill(0).map((x, i) => {
+            gs.sort((a, b) => a[0][1][0] - b[0][1][0]);
+            const l = Math.min(gs.length, 24 );
+            const nn=(ng)=>{
+              const K=Math.log2(ng/440);
+              const G=Math.floor(K);
+              const rN=okI[Math.floor((K-G)*okI.length)]/12+G;
+              return Math.pow(2,Math.floor(rN*12)/12)*440
+            }
+            // if (tt % 2 == 0)
+            const mnG=gs.findIndex((x,i)=>x[0][1][0]>0 && i>=gs.length/l)
+            mB=new Array(l).fill(0).map((x, i) => {
               const o = gs[Math.floor((i + 0.5) * ((gs.length - 1) / (l)))]
-              return [o, o[0]]//Math.atan((Math.abs(o[0]))/440/2)*440*2+110]
+              const oBF5 = gs[mnG][0][1][0];//Math.floor((0.5)*(gs.length-1))][0][1][0];
+              const oBF1 = gs[Math.floor((1)*(gs.length-1))][0][1][0];
+              
+              let newB=(tt % 8 === 0)&&((tt % (8*(Math.pow(4,i%2))) === 0))
+              return newB?[o, [nn(Math.exp(Math.max(-Math.log(2)*4,Math.log(o[0][1][0]/oBF5)/Math.log(oBF1/oBF5)*Math.log(2)*3))*220)],1/24]:mB[i];//o[0][1];
             });
+          
+            // let clusters=gs.length>0?kmeans(gs.map(x=>x[0][1]),l):{centroids:[]};
+            // window.cc=clusters
+            // mB = new Array(l).fill(0).map((x, i) => {
+            //   const o = gs[Math.floor((i + 0.5) * ((gs.length - 1) / (l)))]
+            //   // clusters.centroids[i];
+            //   return [o, clusters.centroids[i],clusters.clusters[i].points.length/gs.length]//Math.atan((Math.abs(o[0]))/440/2)*440*2+110]
+            // });
           }
 
           // pixels.buffer
