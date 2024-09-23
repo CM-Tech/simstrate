@@ -419,7 +419,8 @@ let oldBuffer = [];
 let oldGS = [];
 let mB = [];
 let tt = 0;
-(async () => {
+let started=0;
+const start=()=>started++>0?0:(async () => {
 
   const audioContext = new AudioContext()
   await audioContext.audioWorklet.addModule(workletURL)
@@ -682,7 +683,7 @@ let turnDD=turnMarks.reduce((ac, b) => ac + b, 0) / turnMarks.length
   window.setInterval(() => {
 try{
 
-    // window.mm = mB.map(x => x[1])
+    window.mm = mB.map(x => x[1])
     whiteNoiseNode.port.postMessage({ p: mB, d: 1, t: tt })
 }catch(e){
 
@@ -731,13 +732,13 @@ function connectToDevice(device) {
       // debugEl.innerText = 'KEY DOWN';
       noteOff();
     }else if (command===176){
-      if(key===2)
+      if(key%6===2)
       SPEED_MULT_GUI.setValue(velocity/127*(5-0.25)+0.25);
-      if(key===3)
+      if(key%6===3)
       NOISE_MAGNITUDE_GUI.setValue(velocity/127*(7.5-0)+0);
-      if(key===4)
+      if(key%6===4)
       NOISE_FREQUENCY_GUI.setValue(velocity/127);
-      if(key===5)
+      if(key%6===5)
       MAX_RES_GUI.setValue(velocity/127*(4096/2-256)+256);
     }
   }
@@ -796,3 +797,7 @@ navigator.requestMIDIAccess()
   //   }
   // })
 })();
+
+window.addEventListener("click",start)
+window.addEventListener("keydown",start)
+window.addEventListener("touchstart",start)

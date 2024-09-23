@@ -418,7 +418,7 @@ let oldBuffer = [];
 let oldGS = [];
 let mB = [];
 let tt = 0;
-(async () => {
+window.onload=()=>(async () => {
 
   const audioContext = new AudioContext()
   await audioContext.audioWorklet.addModule(workletURL)
@@ -467,11 +467,12 @@ var analyser = audioCtx.createAnalyser();
     audioCtx.decodeAudioData(audioData, function(buffer) {
         soundSource = audioCtx.createBufferSource();
         convolver.buffer = buffer;
+
+    soundSource.connect(audioCtx.destination);
+    soundSource.loop = true;
+    soundSource.start();
       }, function(e){ console.log("Error with decoding audio data" + e.err);});
 
-    //soundSource.connect(audioCtx.destination);
-    //soundSource.loop = true;
-    //soundSource.start();
   };
 
   ajaxRequest.send();
@@ -682,7 +683,11 @@ let turnDD=turnMarks.reduce((ac, b) => ac + b, 0) / turnMarks.length
 
 
     whiteNoiseNode.port.postMessage({ p: mB, d: 1, t: tt })
+    try{
     window.mm = mB.map(x => x[1])
+    }catch{
+      
+    }
     // stime=q;
   }, 1000 / 44100 * 128 * 2)
   // var audioCtx = new AudioContext();
